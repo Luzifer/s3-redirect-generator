@@ -2,10 +2,17 @@
 
 ## Usage
 
-* Create a text file with your redirects in form of `twitter = https://twitter.com/luzifer` per line
-* Run `generator.py <your file>` to get the XML
-  * Mac users can use `generator.py <your file> | pbcopy` to copy the XML right from the script
-* Put the XML into your bucket redirection rules
+    $ ./generator.py -h
+    usage: generator.py [-h] [-c] config_file
+
+    Sets S3 bucket redirect policy to defined values from config file
+
+    positional arguments:
+      config_file  YAML configuration file
+
+    optional arguments:
+      -h, --help   show this help message and exit
+      -c, --check  Check redirects after setting them
 
 ## License: The MIT License (MIT)
 
