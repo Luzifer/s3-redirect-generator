@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, re, os, yaml, boto, xmltodict, argparse, urllib2
+import sys, re, os, yaml, boto, xmltodict, argparse, httplib2
 
 def main():
   parser = argparse.ArgumentParser(description = 'Sets S3 bucket redirect policy to defined values from config file')
@@ -52,7 +52,6 @@ def main():
 
 def check_location_header(url, expected):
   try:
-    import httplib2
     h = httplib2.Http()
     h.follow_redirects = False
     (response, body) = h.request(url)
@@ -61,10 +60,6 @@ def check_location_header(url, expected):
     print 'An error occured while checking "%s"' % url
     print (e.message)
     sys.exit(1)
-
-class HeadRequest(urllib2.Request):
-  def get_method(self):
-    return 'HEAD'
 
 if __name__ == '__main__':
   main()
