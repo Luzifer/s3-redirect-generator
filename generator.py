@@ -1,36 +1,70 @@
 #!/usr/bin/env python
 
-import sys, re, os
-import xml.etree.cElementTree as ET
+import sys, re, os, yaml, boto, xmltodict, argparse, urllib2
 
-if len(sys.argv) != 2:
-  print 'Usage: %s <redirects file>' % os.path.basename(sys.argv[0])
-  sys.exit(1)
+def main():
+  parser = argparse.ArgumentParser(description = 'Sets S3 bucket redirect policy to defined values from config file')
+  parser.add_argument('config_file', help = 'YAML configuration file', type = str, nargs = 1)
+  parser.add_argument('-c', '--check', help = 'Check redirects after setting them', action = 'store_true')
+  args = parser.parse_args()
 
-root = ET.Element('RoutingRules')
+  config = yaml.load(open(args.config_file[0], 'r'))
 
-try:
-  infile = open(sys.argv[1], 'r')
-except IOError:
-  print 'Redirects file has not been found or is not readable.'
-  sys.exit(2)
+  s3connection = boto.connect_s3(config['iam_key'], config['iam_secret'])
+  s3bucket = s3connection.get_bucket(config['bucket'])
 
-for line in infile:
-  parts = line.split(' = ')
-  rule = ET.SubElement(root, 'RoutingRule')
+  try:
+    bucket_config = xmltodict.parse(s3bucket.get_website_configuration_with_xml()[1])
+  except boto.exception.S3ResponseError:
+    print 'The bucket "%s" is not a S3-website.' % config['bucket']
+    sys.exit(1)
 
-  condition = ET.SubElement(rule, 'Condition')
-  ET.SubElement(condition, 'KeyPrefixEquals').text = parts[0].strip()
+  suffix = bucket_config.get('WebsiteConfiguration').get('IndexDocument').get('Suffix')
+  if bucket_config.get('WebsiteConfiguration').get('ErrorDocument'):
+    error_key = bucket_config.get('WebsiteConfiguration').get('ErrorDocument').get('Key')
+  else:
+    error_key = None
+  rules = boto.s3.website.RoutingRules()
 
-  url = re.search(r'(https?)://([^/]+)/?(.*)$', parts[1].strip())
+  for key, target in config['redirects'].iteritems():
+    url = re.search(r'(https?)://([^/]+)/?(.*)$', target.strip())
+    rules.add_rule(boto.s3.website.RoutingRule
+      .when(key_prefix = key)
+      .then_redirect(hostname = url.group(2), protocol = url.group(1), replace_key = url.group(3))
+    )
 
-  redirect = ET.SubElement(rule, 'Redirect')
-  ET.SubElement(redirect, 'Protocol').text = url.group(1)
-  ET.SubElement(redirect, 'HostName').text = url.group(2)
-  ET.SubElement(redirect, 'ReplaceKeyWith').text = url.group(3)
-  ET.SubElement(redirect, 'HttpRedirectCode').text = '302'
+  if s3bucket.configure_website(suffix = suffix, error_key = error_key, routing_rules = rules):
+    print 'Configuration for bucket "%s" set successful.' % config['bucket']
 
-tree = ET.ElementTree(root)
-tree.write(sys.stdout)
+    if args.check:
+      print 'Checking redirects...'
+      for key, target in config['redirects'].iteritems():
+        url = 'http://%s/%s' % (config['bucket'], key)
+        if check_location_header(url, target):
+          print '%s: OK' % key
+        else:
+          print '%s: ERR' % key
 
-print
+    sys.exit(0)
+  else:
+    print 'An error occured while configuring bucket "%s".' % config['bucket']
+    sys.exit(1)
+
+def check_location_header(url, expected):
+  try:
+    import httplib2
+    h = httplib2.Http()
+    h.follow_redirects = False
+    (response, body) = h.request(url)
+    return response['location'] == expected
+  except httplib2.ServerNotFoundError, e:
+    print 'An error occured while checking "%s"' % url
+    print (e.message)
+    sys.exit(1)
+
+class HeadRequest(urllib2.Request):
+  def get_method(self):
+    return 'HEAD'
+
+if __name__ == '__main__':
+  main()

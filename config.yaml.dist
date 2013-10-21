@@ -1,0 +1,10 @@
+---
+iam_key: <IAM Key>
+iam_secret: <IAM Secret>
+bucket: <S3 Bucket>
+
+redirects:
+  +             : https://plus.google.com/109622790737147599188
+  blog          : http://blog.knut.me
+  github        : http://github.com/luzifer
+  twitter       : http://www.twitter.com/luzifer
